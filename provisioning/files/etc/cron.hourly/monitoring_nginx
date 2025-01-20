@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Объявляем переменные:
+LOG_FILE=/var/log/monitoring_nginx.log
+LOG_FILE_TEMP=/var/log/monitoring_nginx_temp.log
+nginx_log_file=/var/log/nginx/access.log
+DATE_START="момента установки NGINX"
+
+# Максимальное количество записей с "наибольшим кол-вом запросов" 
+Max_Line=5
+
+LAST_log=""
+
+# Запускаем скрипт:
+
+  RUNS=$(ps afx | grep monitoring_nginx | wc -l)
+  if [ "$RUNS" -gt "3" ]
+    then
+      echo "У вас уже запущен другой экземпляр скрипта!" >&2
+      exit 1
+  fi
+
+
+  if test -f $LOG_FILE
+    then
+      # Получаем лог на котором остановились в последний раз
+      LAST_log=$(grep "LAST_log" $LOG_FILE | tail -n 1 | sed -e "s/LAST_log = /""/g")
+      DATE_START=$(echo $LAST_log | awk '{print $4}' | sed -e "s/\[/""/g")
+      # Получаем номер строки последнего лога в файле логов nginx
+      NumberLine=$(grep -n -F "$LAST_log" $nginx_log_file | tail -n 1 | awk -F":" '{print $1}')
+      # Прибавляем к нему 1.
+      NumberLine=$((NumberLine + 1))
+      # Копируем строки из оригинального файла логов nginx начиная со следующей после последнего лога во временный файл
+      tail -n +$NumberLine $nginx_log_file > $LOG_FILE_TEMP
+      LAST_log=$(tail -n 1 $LOG_FILE_TEMP)
+      echo "LAST_log = "$LAST_log >> $LOG_FILE
+      DATE_END=$(echo $LAST_log | awk '{print $4}' | sed -e "s/\[/""/g")
+    else
+      cat $nginx_log_file > $LOG_FILE_TEMP
+      LAST_log=$(tail -n 1 $LOG_FILE_TEMP)
+      echo "LAST_log = "$LAST_log >> $LOG_FILE
+      DATE_END=$(echo $LAST_log | awk '{print $4}' | sed -e "s/\[/""/g")
+      echo "DATE_END = "$DATE_END
+  fi
+
+echo "Обрабатываемый временной диапазон с "$DATE_START" по "$DATE_END >> $LOG_FILE
+
+  echo "Список IP адресов (с наибольшим кол-вом запросов) с указанием кол-ва запросов c момента последнего запуска скрипта" >> $LOG_FILE
+  awk '{print $1}' $LOG_FILE_TEMP | sort | uniq -c | sort -nr | head -n $Max_Line >> $LOG_FILE
+
+  echo "Список запрашиваемых URL (с наибольшим кол-вом запросов) с указанием кол-ва запросов c момента последнего запуска скрипта" >> $LOG_FILE
+  awk '{print $7}' $LOG_FILE_TEMP | sort | uniq -c | sort -nr | head -n $Max_Line >> $LOG_FILE
+
+  echo "Ошибки веб-сервера/приложения c момента последнего запуска" >> $LOG_FILE
+  grep -P '\" 404 ' $LOG_FILE_TEMP >> $LOG_FILE
+
+  echo "Список всех кодов HTTP ответа с указанием их кол-ва с момента последнего запуска скрипта" >> $LOG_FILE
+  awk '{print $9}' $LOG_FILE_TEMP | sort | uniq -c | sort -nr | head -n $Max_Line >> $LOG_FILE

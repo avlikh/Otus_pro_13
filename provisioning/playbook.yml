@@ -1,0 +1,23 @@
+---
+- hosts: all # part running on all hosts
+  become: true
+  tasks:
+    - name: Update repositories cache and apt
+      ansible.builtin.apt:
+        update_cache: yes
+      tags: 
+        -update apt
+
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+
+    - name: Copy file monitoring_nginx
+      ansible.builtin.copy:
+        src: "files/etc/cron.hourly/monitoring_nginx"
+        dest: /etc/cron.hourly
+        owner: root
+        group: root
+        mode: '0766'
+...
